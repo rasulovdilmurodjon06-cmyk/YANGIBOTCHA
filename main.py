@@ -10,8 +10,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 # ================== SOZLAMALAR ==================
 TOKEN = "8743222556:AAHRWt8Q6retk45JVsbR_BD7TLMR9mgyj0M"
 MONGO_URL = "mongodb+srv://rasulovdilmurodjon06_db_user:7JH3fPmxjTSasDnI@cluster0.fyhko1v.mongodb.net/?appName=Cluster0"
-
-ADMIN_ID = 8386486185 # 👈 o'zingni ID yoz
+ADMIN_ID = 8386486185
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client['dating_bot_db']
@@ -23,7 +22,7 @@ dp = Dispatcher()
 # ===== CHAT STATE =====
 active_reply = {}
 
-# ===== REG STATES =====
+# ===== STATES =====
 class Reg(StatesGroup):
     name = State()
     age = State()
@@ -44,29 +43,29 @@ def menu():
         keyboard=[
             [KeyboardButton(text="🔍 Qidiruv")],
             [KeyboardButton(text="👤 Profilim")],
-            [KeyboardButton(text="📞 Admin")]
+            [KeyboardButton(text="⚙️ Sozlamalar")]
         ],
         resize_keyboard=True
     )
 
-# ===== BAN CHECK FUNCTION =====
+# ===== BAN CHECK =====
 async def is_banned(user_id: int):
     user = await users_col.find_one({"user_id": user_id})
     return user and user.get("banned") == True
 
 # ================= START =================
 @dp.message(Command("start"))
-async def start(message: types.Message, state: FSMContext):
+async def start(m: types.Message, state: FSMContext):
 
-    if await is_banned(message.from_user.id):
-        return await message.answer("🚫 Siz bloklangansiz")
+    if await is_banned(m.from_user.id):
+        return await m.answer("🚫 Siz bloklangansiz")
 
-    user = await users_col.find_one({"user_id": message.from_user.id})
+    user = await users_col.find_one({"user_id": m.from_user.id})
 
     if user:
-        await message.answer("Xush kelibsiz!", reply_markup=menu())
+        await m.answer("Xush kelibsiz!", reply_markup=menu())
     else:
-        await message.answer("Ismingiz:")
+        await m.answer("Ismingiz:")
         await state.set_state(Reg.name)
 
 # ================= REG =================
@@ -146,7 +145,7 @@ async def photo(m: types.Message, s: FSMContext):
     await s.clear()
     await m.answer("Tayyor!", reply_markup=menu())
 
-# ================= SEARCH =================
+# ================= QIDIRUV =================
 @dp.message(F.text == "🔍 Qidiruv")
 async def search(m: types.Message):
 
@@ -162,9 +161,6 @@ async def search(m: types.Message):
 @dp.callback_query(F.data.startswith("find_"))
 async def find(c: types.CallbackQuery):
 
-    if await is_banned(c.from_user.id):
-        return await c.answer("🚫 bloklangan")
-
     gender = c.data.split("_")[1]
 
     user = await users_col.aggregate([
@@ -179,8 +175,7 @@ async def find(c: types.CallbackQuery):
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="✉️ Xabar", callback_data=f"msg_{u['user_id']}")],
-            [InlineKeyboardButton(text="Keyingi", callback_data=f"find_{gender}")]
+            [InlineKeyboardButton(text="✉️ Xabar yozish", callback_data=f"msg_{u['user_id']}")]
         ]
     )
 
@@ -190,14 +185,15 @@ async def find(c: types.CallbackQuery):
         reply_markup=kb
     )
 
-# ================= CHAT =================
+# ================= CHAT START =================
 @dp.callback_query(F.data.startswith("msg_"))
 async def msg_start(c: types.CallbackQuery):
     active_reply[c.from_user.id] = int(c.data.split("_")[1])
     await c.message.answer("Xabar yozing")
     await c.answer()
 
-@dp.message()
+# ================= CHAT FIX (ENG MUHIM) =================
+@dp.message(F.text & ~F.text.startswith("/"))
 async def chat(m: types.Message):
 
     if await is_banned(m.from_user.id):
@@ -209,31 +205,14 @@ async def chat(m: types.Message):
 
         target = active_reply[uid]
 
-        await bot.send_message(
-            target,
-            f"📩 Xabar:\n{m.text}",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="↩️ Javob", callback_data=f"reply_{uid}")]
-                ]
-            )
-        )
+        await bot.send_message(target, f"📩 Xabar:\n{m.text}")
 
         await m.answer("Yuborildi")
         del active_reply[uid]
 
-@dp.callback_query(F.data.startswith("reply_"))
-async def reply(c: types.CallbackQuery):
-    active_reply[c.from_user.id] = int(c.data.split("_")[1])
-    await c.message.answer("Javob yozing")
-    await c.answer()
-
 # ================= PROFILE =================
 @dp.message(F.text == "👤 Profilim")
 async def profile(m: types.Message):
-
-    if await is_banned(m.from_user.id):
-        return
 
     user = await users_col.find_one({"user_id": m.from_user.id})
 
@@ -243,53 +222,10 @@ async def profile(m: types.Message):
             caption=f"{user['name']} | {user['age']}\n{user['region']} - {user['city']}"
         )
 
-# ================= ADMIN =================
-@dp.message(Command("stat"))
-async def stat(m: types.Message):
-    if m.from_user.id != ADMIN_ID:
-        return
-
-    total = await users_col.count_documents({})
-    boys = await users_col.count_documents({"gender": "Yigit"})
-    girls = await users_col.count_documents({"gender": "Qiz"})
-
-    await m.answer(
-        f"📊 Statistika\n\n👥 {total}\n👨 {boys}\n👩 {girls}"
-    )
-
-@dp.message(Command("ban"))
-async def ban(m: types.Message):
-    if m.from_user.id != ADMIN_ID:
-        return
-
-    try:
-        uid = int(m.text.split()[1])
-
-        await users_col.update_one(
-            {"user_id": uid},
-            {"$set": {"banned": True}}
-        )
-
-        await m.answer("🚫 ban qilindi")
-    except:
-        await m.answer("xato")
-
-@dp.message(Command("unban"))
-async def unban(m: types.Message):
-    if m.from_user.id != ADMIN_ID:
-        return
-
-    try:
-        uid = int(m.text.split()[1])
-
-        await users_col.update_one(
-            {"user_id": uid},
-            {"$set": {"banned": False}}
-        )
-
-        await m.answer("✅ ochildi")
-    except:
-        await m.answer("xato")
+# ================= SETTINGS =================
+@dp.message(F.text == "⚙️ Sozlamalar")
+async def settings(m: types.Message):
+    await m.answer("Sozlamalar bo‘limi")
 
 # ================= RUN =================
 async def main():
