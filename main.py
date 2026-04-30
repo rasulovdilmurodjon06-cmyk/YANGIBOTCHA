@@ -11,7 +11,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 TOKEN = "8743222556:AAHRWt8Q6retk45JVsbR_BD7TLMR9mgyj0M"
 MONGO_URL = "mongodb+srv://rasulovdilmurodjon06_db_user:7JH3fPmxjTSasDnI@cluster0.fyhko1v.mongodb.net/?appName=Cluster0"
 
-ADMIN_ID = 123456789  # 👈 o'zingni ID yoz
+ADMIN_ID = 8386486185 # 👈 o'zingni ID yoz
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client['dating_bot_db']
