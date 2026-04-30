@@ -10,8 +10,8 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 from motor.motor_asyncio import AsyncIOMotorClient
 
 # --- SOZLAMALAR (ENV orqali xavfsiz) ---
-TOKEN = os.getenv "BOT_TOKEN"8743222556:AAHRWt8Q6retk45JVsbR_BD7TLMR9mgyj0M"
-MONGO_URL = os.getenv "MONGO_URL="mongodb+srv://rasulovdilmurodjon06_db_user:7JH3fPmxjTSasDnI@cluster0.fyhko1v.mongodb.net/?appName=Cluster0"
+TOKEN = os.getenv"8743222556:AAHRWt8Q6retk45JVsbR_BD7TLMR9mgyj0M"
+MONGO_URL = os.getenv"mongodb+srv://rasulovdilmurodjon06_db_user:7JH3fPmxjTSasDnI@cluster0.fyhko1v.mongodb.net/?appName=Cluster0"
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client['dating_bot_db']
