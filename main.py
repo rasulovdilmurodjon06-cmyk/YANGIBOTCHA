@@ -9,7 +9,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 from motor.motor_asyncio import AsyncIOMotorClient
 
 # Sozlamalar (Render'da Environment Variables qismiga qo'shish tavsiya etiladi)
-TOKEN = "8743222556:AAHRWt8Q6retk45JVsbR_BD7TLMR9mgyj0)M"
+TOKEN = "8743222556:AAHRWt8Q6retk45JVsbR_BD7TLMR9mgyj0M"
 MONGO_URL = "mongodb+srv://rasulovdilmurodjon06_db_user:7JH3fPmxjTSasDnI@cluster0.fyhko1v.mongodb.net/?appName=Cluster0"
 
 client = AsyncIOMotorClient(MONGO_URL)
