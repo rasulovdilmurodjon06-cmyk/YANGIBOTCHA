@@ -1,17 +1,17 @@
 import asyncio
 import logging
-import os
-from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
+from aiogram.types import *
 from motor.motor_asyncio import AsyncIOMotorClient
 
-# --- SOZLAMALAR (ENV orqali xavfsiz) ---
+# ================== SOZLAMALAR ==================
 TOKEN = "8743222556:AAHRWt8Q6retk45JVsbR_BD7TLMR9mgyj0M"
 MONGO_URL = "mongodb+srv://rasulovdilmurodjon06_db_user:7JH3fPmxjTSasDnI@cluster0.fyhko1v.mongodb.net/?appName=Cluster0"
+
+ADMIN_ID = 123456789  # 👈 o'zingni ID yoz
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client['dating_bot_db']
@@ -20,212 +20,280 @@ users_col = db['users']
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# --- WEB SERVER ---
-async def handle(request):
-    return web.Response(text="Bot is Live!")
+# ===== CHAT STATE =====
+active_reply = {}
 
-async def start_web_server():
-    app = web.Application()
-    app.add_routes([web.get('/', handle)])
-    runner = web.AppRunner(app)
-    await runner.setup()
-    await web.TCPSite(
-        runner,
-        '0.0.0.0',
-        int(os.environ.get("PORT", 8080))
-    ).start()
-
-# --- HOLATLAR ---
-class Registration(StatesGroup):
+# ===== REG STATES =====
+class Reg(StatesGroup):
     name = State()
     age = State()
     gender = State()
+    region = State()
+    city = State()
     photo = State()
 
-# --- MENU ---
-def main_menu():
+# ===== REGION =====
+REGIONS = {
+    "Toshkent": ["Chilonzor", "Yunusobod"],
+    "Farg'ona": ["Qo'qon", "Marg'ilon"]
+}
+
+# ===== MENU =====
+def menu():
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="🔍 Qidiruv")],
-            [KeyboardButton(text="👤 Profilim"), KeyboardButton(text="⚙️ Sozlamalar")]
+            [KeyboardButton(text="👤 Profilim")],
+            [KeyboardButton(text="📞 Admin")]
         ],
         resize_keyboard=True
     )
 
-# --- START ---
+# ===== BAN CHECK FUNCTION =====
+async def is_banned(user_id: int):
+    user = await users_col.find_one({"user_id": user_id})
+    return user and user.get("banned") == True
+
+# ================= START =================
 @dp.message(Command("start"))
-async def start_handler(message: types.Message, state: FSMContext):
+async def start(message: types.Message, state: FSMContext):
+
+    if await is_banned(message.from_user.id):
+        return await message.answer("🚫 Siz bloklangansiz")
+
     user = await users_col.find_one({"user_id": message.from_user.id})
+
     if user:
-        await message.answer("Xush kelibsiz!", reply_markup=main_menu())
+        await message.answer("Xush kelibsiz!", reply_markup=menu())
     else:
-        await message.answer("Ismingizni kiriting:")
-        await state.set_state(Registration.name)
+        await message.answer("Ismingiz:")
+        await state.set_state(Reg.name)
 
-# --- NAME ---
-@dp.message(Registration.name)
-async def set_name(message: types.Message, state: FSMContext):
-    await state.update_data(name=message.text)
-    await message.answer("Yoshingizni kiriting:")
-    await state.set_state(Registration.age)
+# ================= REG =================
+@dp.message(Reg.name)
+async def name(m: types.Message, s: FSMContext):
+    await s.update_data(name=m.text)
+    await m.answer("Yosh:")
+    await s.set_state(Reg.age)
 
-# --- AGE ---
-@dp.message(Registration.age)
-async def set_age(message: types.Message, state: FSMContext):
-    if not message.text.isdigit():
-        return await message.answer("Iltimos faqat raqam kiriting")
+@dp.message(Reg.age)
+async def age(m: types.Message, s: FSMContext):
+    if not m.text.isdigit():
+        return await m.answer("Raqam kiriting")
 
-    await state.update_data(age=int(message.text))
+    await s.update_data(age=int(m.text))
 
     kb = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="Yigit"), KeyboardButton(text="Qiz")]],
         resize_keyboard=True
     )
 
-    await message.answer("Jinsingizni tanlang:", reply_markup=kb)
-    await state.set_state(Registration.gender)
+    await m.answer("Jins:", reply_markup=kb)
+    await s.set_state(Reg.gender)
 
-# --- GENDER ---
-@dp.message(Registration.gender)
-async def set_gender(message: types.Message, state: FSMContext):
-    if message.text not in ["Yigit", "Qiz"]:
-        return await message.answer("Faqat tugmadan tanlang!")
+@dp.message(Reg.gender)
+async def gender(m: types.Message, s: FSMContext):
+    await s.update_data(gender=m.text)
 
-    await state.update_data(gender=message.text)
-    await message.answer("Rasm yuboring 📸")
-    await state.set_state(Registration.photo)
+    kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=r)] for r in REGIONS],
+        resize_keyboard=True
+    )
 
-# --- PHOTO ---
-@dp.message(F.photo, Registration.photo)
-async def set_photo(message: types.Message, state: FSMContext):
-    data = await state.get_data()
+    await m.answer("Viloyat:", reply_markup=kb)
+    await s.set_state(Reg.region)
 
-    user_doc = {
-        "user_id": message.from_user.id,
+@dp.message(Reg.region)
+async def region(m: types.Message, s: FSMContext):
+    await s.update_data(region=m.text)
+
+    kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=c)] for c in REGIONS[m.text]],
+        resize_keyboard=True
+    )
+
+    await m.answer("Shahar:", reply_markup=kb)
+    await s.set_state(Reg.city)
+
+@dp.message(Reg.city)
+async def city(m: types.Message, s: FSMContext):
+    await s.update_data(city=m.text)
+    await m.answer("Rasm yuboring")
+    await s.set_state(Reg.photo)
+
+@dp.message(F.photo, Reg.photo)
+async def photo(m: types.Message, s: FSMContext):
+
+    data = await s.get_data()
+
+    user = {
+        "user_id": m.from_user.id,
         "name": data['name'],
         "age": data['age'],
         "gender": data['gender'],
-        "photo": message.photo[-1].file_id
+        "region": data['region'],
+        "city": data['city'],
+        "photo": m.photo[-1].file_id,
+        "banned": False
     }
 
     await users_col.update_one(
-        {"user_id": message.from_user.id},
-        {"$set": user_doc},
+        {"user_id": user["user_id"]},
+        {"$set": user},
         upsert=True
     )
 
-    await state.clear()
-    await message.answer("Ro'yxatdan o'tdingiz!", reply_markup=main_menu())
+    await s.clear()
+    await m.answer("Tayyor!", reply_markup=menu())
 
-# --- AGAR RASM YUBORMASA ---
-@dp.message(Registration.photo)
-async def photo_error(message: types.Message):
-    await message.answer("Iltimos rasm yuboring 📸")
-
-# --- QIDIRUV ---
+# ================= SEARCH =================
 @dp.message(F.text == "🔍 Qidiruv")
-async def search_start(message: types.Message):
+async def search(m: types.Message):
+
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Qizlar 👩", callback_data="find_Qiz")],
-            [InlineKeyboardButton(text="Yigitlar 👨", callback_data="find_Yigit")]
+            [InlineKeyboardButton(text="Qizlar", callback_data="find_Qiz")],
+            [InlineKeyboardButton(text="Yigitlar", callback_data="find_Yigit")]
         ]
     )
-    await message.answer("Kimni qidiramiz?", reply_markup=kb)
 
-# --- USER KO'RSATISH ---
+    await m.answer("Tanlang:", reply_markup=kb)
+
 @dp.callback_query(F.data.startswith("find_"))
-async def show_users(callback: types.CallbackQuery):
-    target_gender = callback.data.split("_")[1]
+async def find(c: types.CallbackQuery):
 
-    pipeline = [
-        {"$match": {
-            "gender": target_gender,
-            "user_id": {"$ne": callback.from_user.id}
-        }},
+    if await is_banned(c.from_user.id):
+        return await c.answer("🚫 bloklangan")
+
+    gender = c.data.split("_")[1]
+
+    user = await users_col.aggregate([
+        {"$match": {"gender": gender, "user_id": {"$ne": c.from_user.id}}},
         {"$sample": {"size": 1}}
-    ]
+    ]).to_list(1)
 
-    profiles = await users_col.aggregate(pipeline).to_list(length=1)
+    if not user:
+        return await c.answer("Yo‘q")
 
-    if profiles:
-        user = profiles[0]
+    u = user[0]
 
-        kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="😍 Yoqdi", callback_data=f"like_{user['user_id']}")],
-                [InlineKeyboardButton(text="➡️ Keyingi", callback_data=f"find_{target_gender}")]
-            ]
-        )
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✉️ Xabar", callback_data=f"msg_{u['user_id']}")],
+            [InlineKeyboardButton(text="Keyingi", callback_data=f"find_{gender}")]
+        ]
+    )
 
-        await callback.message.delete()
+    await c.message.answer_photo(
+        u['photo'],
+        caption=f"{u['name']} | {u['age']}",
+        reply_markup=kb
+    )
 
-        await callback.message.answer_photo(
-            user['photo'],
-            caption=f"Ismi: {user['name']}\nYoshi: {user['age']}",
-            reply_markup=kb
-        )
-    else:
-        await callback.answer("Hozircha hech kim yo'q", show_alert=True)
+# ================= CHAT =================
+@dp.callback_query(F.data.startswith("msg_"))
+async def msg_start(c: types.CallbackQuery):
+    active_reply[c.from_user.id] = int(c.data.split("_")[1])
+    await c.message.answer("Xabar yozing")
+    await c.answer()
 
-# --- LIKE ---
-@dp.callback_query(F.data.startswith("like_"))
-async def handle_like(callback: types.CallbackQuery):
-    try:
-        target_id = int(callback.data.split("_")[1])
+@dp.message()
+async def chat(m: types.Message):
+
+    if await is_banned(m.from_user.id):
+        return
+
+    uid = m.from_user.id
+
+    if uid in active_reply:
+
+        target = active_reply[uid]
 
         await bot.send_message(
-            target_id,
-            "Sizga kimdir 😍 like bosdi!"
+            target,
+            f"📩 Xabar:\n{m.text}",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="↩️ Javob", callback_data=f"reply_{uid}")]
+                ]
+            )
         )
 
-        await callback.answer("Yuborildi!", show_alert=True)
+        await m.answer("Yuborildi")
+        del active_reply[uid]
 
-    except Exception as e:
-        print(e)
-        await callback.answer("Xatolik yuz berdi")
+@dp.callback_query(F.data.startswith("reply_"))
+async def reply(c: types.CallbackQuery):
+    active_reply[c.from_user.id] = int(c.data.split("_")[1])
+    await c.message.answer("Javob yozing")
+    await c.answer()
 
-# --- PROFIL ---
+# ================= PROFILE =================
 @dp.message(F.text == "👤 Profilim")
-async def my_profile(message: types.Message):
-    user = await users_col.find_one({"user_id": message.from_user.id})
+async def profile(m: types.Message):
+
+    if await is_banned(m.from_user.id):
+        return
+
+    user = await users_col.find_one({"user_id": m.from_user.id})
 
     if user:
-        await message.answer_photo(
+        await m.answer_photo(
             user['photo'],
-            caption=f"Ism: {user['name']}\nYosh: {user['age']}\nJins: {user['gender']}"
+            caption=f"{user['name']} | {user['age']}\n{user['region']} - {user['city']}"
         )
 
-# --- SOZLAMALAR ---
-@dp.message(F.text == "⚙️ Sozlamalar")
-async def settings_menu(message: types.Message):
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Profilni o'chirish", callback_data="del_profile")]
-        ]
-    )
-    await message.answer("Sozlamalar:", reply_markup=kb)
+# ================= ADMIN =================
+@dp.message(Command("stat"))
+async def stat(m: types.Message):
+    if m.from_user.id != ADMIN_ID:
+        return
 
-# --- DELETE ---
-@dp.callback_query(F.data == "del_profile")
-async def delete_profile(callback: types.CallbackQuery):
-    await users_col.delete_one({"user_id": callback.from_user.id})
+    total = await users_col.count_documents({})
+    boys = await users_col.count_documents({"gender": "Yigit"})
+    girls = await users_col.count_documents({"gender": "Qiz"})
 
-    await callback.message.answer(
-        "Profil o'chirildi. /start bosing",
-        reply_markup=ReplyKeyboardRemove()
+    await m.answer(
+        f"📊 Statistika\n\n👥 {total}\n👨 {boys}\n👩 {girls}"
     )
 
-    await callback.answer("O'chirildi")
+@dp.message(Command("ban"))
+async def ban(m: types.Message):
+    if m.from_user.id != ADMIN_ID:
+        return
 
-# --- MAIN ---
+    try:
+        uid = int(m.text.split()[1])
+
+        await users_col.update_one(
+            {"user_id": uid},
+            {"$set": {"banned": True}}
+        )
+
+        await m.answer("🚫 ban qilindi")
+    except:
+        await m.answer("xato")
+
+@dp.message(Command("unban"))
+async def unban(m: types.Message):
+    if m.from_user.id != ADMIN_ID:
+        return
+
+    try:
+        uid = int(m.text.split()[1])
+
+        await users_col.update_one(
+            {"user_id": uid},
+            {"$set": {"banned": False}}
+        )
+
+        await m.answer("✅ ochildi")
+    except:
+        await m.answer("xato")
+
+# ================= RUN =================
 async def main():
     logging.basicConfig(level=logging.INFO)
-
-    await start_web_server()
-
-    # polling (agar webhook qilmasang)
-    await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
